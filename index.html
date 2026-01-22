@@ -151,10 +151,149 @@
     <script type="module">
         import { parseGIF, decompressFrames } from 'https://esm.sh/gifuct-js@2.1.2';
         import { GIFEncoder, quantize, applyPalette } from 'https://cdn.skypack.dev/gifenc';
+        // Create animated WebP by muxing individual WebP frames
+        async function createAnimatedWebP(frames, width, height) {
+            // Each frame: { data: Uint8Array (WebP), delay: number (ms) }
+
+            // Extract VP8/VP8L bitstreams (with ALPH if present) from each frame
+            const payloads = [];
+            let totalPayloadSize = 0;
+            let hasAlpha = false;
+
+            for (const frame of frames) {
+                // Parse the WebP to find ALPH and VP8/VP8L chunks
+                const data = frame.data;
+                let pos = 12; // Skip RIFF header
+
+                let alphChunk = null;
+                let vp8Chunk = null;
+
+                while (pos < data.length - 8) {
+                    const fourcc = String.fromCharCode(data[pos], data[pos+1], data[pos+2], data[pos+3]);
+                    const chunkSize = data[pos+4] | (data[pos+5] << 8) | (data[pos+6] << 16) | (data[pos+7] << 24);
+                    const paddedSize = chunkSize + (chunkSize % 2);
+
+                    if (fourcc === 'ALPH') {
+                        alphChunk = data.slice(pos, pos + 8 + paddedSize);
+                        hasAlpha = true;
+                    } else if (fourcc === 'VP8 ' || fourcc === 'VP8L') {
+                        vp8Chunk = data.slice(pos, pos + 8 + paddedSize);
+                        if (fourcc === 'VP8L') hasAlpha = true; // VP8L has built-in alpha
+                    }
+                    pos += 8 + paddedSize;
+                }
+
+                // Combine ALPH + VP8 or just VP8L
+                let payload;
+                if (alphChunk && vp8Chunk) {
+                    payload = new Uint8Array(alphChunk.length + vp8Chunk.length);
+                    payload.set(alphChunk, 0);
+                    payload.set(vp8Chunk, alphChunk.length);
+                } else if (vp8Chunk) {
+                    payload = vp8Chunk;
+                } else {
+                    // Fallback
+                    payload = data.slice(12);
+                }
+
+                payloads.push(payload);
+                const anmfDataSize = 16 + payload.length;
+                totalPayloadSize += 8 + anmfDataSize + (anmfDataSize % 2);
+            }
+
+            // Total file structure:
+            // RIFF header: 12 bytes
+            // VP8X chunk: 8 + 10 = 18 bytes
+            // ANIM chunk: 8 + 6 = 14 bytes
+            // ANMF chunks: variable
+            const totalSize = 12 + 18 + 14 + totalPayloadSize;
+
+            const buffer = new ArrayBuffer(totalSize);
+            const view = new DataView(buffer);
+            const bytes = new Uint8Array(buffer);
+            let offset = 0;
+
+            // RIFF header
+            bytes.set([0x52, 0x49, 0x46, 0x46], 0); // "RIFF"
+            view.setUint32(4, totalSize - 8, true); // File size minus RIFF header
+            bytes.set([0x57, 0x45, 0x42, 0x50], 8); // "WEBP"
+            offset = 12;
+
+            // VP8X chunk (extended features)
+            bytes.set([0x56, 0x50, 0x38, 0x58], offset); // "VP8X"
+            view.setUint32(offset + 4, 10, true); // Chunk size
+            bytes[offset + 8] = hasAlpha ? 0x12 : 0x02; // Flags: animation + alpha
+            bytes[offset + 9] = 0;
+            bytes[offset + 10] = 0;
+            bytes[offset + 11] = 0;
+            // Canvas width - 1 (24-bit LE)
+            bytes[offset + 12] = (width - 1) & 0xFF;
+            bytes[offset + 13] = ((width - 1) >> 8) & 0xFF;
+            bytes[offset + 14] = ((width - 1) >> 16) & 0xFF;
+            // Canvas height - 1 (24-bit LE)
+            bytes[offset + 15] = (height - 1) & 0xFF;
+            bytes[offset + 16] = ((height - 1) >> 8) & 0xFF;
+            bytes[offset + 17] = ((height - 1) >> 16) & 0xFF;
+            offset += 18;
+
+            // ANIM chunk
+            bytes.set([0x41, 0x4E, 0x49, 0x4D], offset); // "ANIM"
+            view.setUint32(offset + 4, 6, true); // Chunk size
+            view.setUint32(offset + 8, 0x00000000, true); // Background color
+            view.setUint16(offset + 12, 0, true); // Loop count (0 = infinite)
+            offset += 14;
+
+            // ANMF chunks
+            for (let i = 0; i < frames.length; i++) {
+                const payload = payloads[i];
+                const delay = frames[i].delay;
+                const anmfDataSize = 16 + payload.length;
+
+                bytes.set([0x41, 0x4E, 0x4D, 0x46], offset); // "ANMF"
+                view.setUint32(offset + 4, anmfDataSize, true); // Chunk size (unpadded)
+
+                // Frame X / 2 (24-bit LE) - position 0
+                bytes[offset + 8] = 0;
+                bytes[offset + 9] = 0;
+                bytes[offset + 10] = 0;
+                // Frame Y / 2 (24-bit LE) - position 0
+                bytes[offset + 11] = 0;
+                bytes[offset + 12] = 0;
+                bytes[offset + 13] = 0;
+                // Frame width - 1 (24-bit LE)
+                bytes[offset + 14] = (width - 1) & 0xFF;
+                bytes[offset + 15] = ((width - 1) >> 8) & 0xFF;
+                bytes[offset + 16] = ((width - 1) >> 16) & 0xFF;
+                // Frame height - 1 (24-bit LE)
+                bytes[offset + 17] = (height - 1) & 0xFF;
+                bytes[offset + 18] = ((height - 1) >> 8) & 0xFF;
+                bytes[offset + 19] = ((height - 1) >> 16) & 0xFF;
+                // Duration (24-bit LE, in ms)
+                bytes[offset + 20] = delay & 0xFF;
+                bytes[offset + 21] = (delay >> 8) & 0xFF;
+                bytes[offset + 22] = (delay >> 16) & 0xFF;
+                // Flags: blend=0, dispose=0
+                bytes[offset + 23] = 0;
+
+                // Frame data (VP8/VP8L bitstream)
+                bytes.set(payload, offset + 24);
+                offset += 8 + anmfDataSize;
+
+                // Padding byte if chunk data is odd
+                if (anmfDataSize % 2) {
+                    bytes[offset] = 0;
+                    offset++;
+                }
+            }
+
+            return new Blob([buffer], { type: 'image/webp' });
+        }
 
         let img = null;
-        let isGif = false;
+        let isAnimated = false;
+        let isWebP = false;
         let gifFrames = null;
+        let webpFrames = null;
         let gifBlob = null;
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
@@ -164,12 +303,16 @@
             const file = e.target.files[0];
             if (!file) return;
 
-            isGif = file.type === 'image/gif';
+            isAnimated = false;
+            isWebP = file.type === 'image/webp';
             gifFrames = null;
+            webpFrames = null;
             gifBlob = null;
 
-            if (isGif) {
+            if (file.type === 'image/gif') {
                 await handleGif(file);
+            } else if (isWebP) {
+                await handleWebP(file);
             } else {
                 handleStaticImage(file);
             }
@@ -181,7 +324,7 @@
                 img = new Image();
                 img.onload = () => {
                     document.getElementById('output').classList.remove('hidden');
-                    downloadBtn.textContent = 'Download PNG';
+                    downloadBtn.textContent = isWebP ? 'Download WebP' : 'Download PNG';
                     downloadBtn.disabled = false;
                     render();
                 };
@@ -190,11 +333,94 @@
             reader.readAsDataURL(file);
         }
 
+        async function handleWebP(file) {
+            // Check if ImageDecoder is supported
+            if (typeof ImageDecoder === 'undefined') {
+                console.log('ImageDecoder not supported, falling back to static');
+                handleStaticImage(file);
+                return;
+            }
+
+            const arrayBuffer = await file.arrayBuffer();
+
+            try {
+                const decoder = new ImageDecoder({
+                    data: arrayBuffer,
+                    type: 'image/webp'
+                });
+
+                await decoder.completed;
+                await decoder.tracks.ready;
+
+                const track = decoder.tracks.selectedTrack;
+                console.log('WebP tracks:', decoder.tracks, 'selected:', track, 'frameCount:', track?.frameCount);
+
+                // Check if it's animated
+                if (!track || track.frameCount <= 1) {
+                    console.log('Not animated or single frame, falling back to static');
+                    decoder.close();
+                    handleStaticImage(file);
+                    return;
+                }
+
+                document.getElementById('output').classList.remove('hidden');
+                document.getElementById('progressContainer').classList.remove('hidden');
+                downloadBtn.disabled = true;
+                downloadBtn.textContent = 'Processing...';
+                updateProgress(0, 'Parsing WebP...');
+
+                isAnimated = true;
+                const frameCount = track.frameCount;
+                const frames = [];
+
+                for (let i = 0; i < frameCount; i++) {
+                    const result = await decoder.decode({ frameIndex: i });
+                    const videoFrame = result.image;
+
+                    // Convert VideoFrame to ImageBitmap
+                    const bitmap = await createImageBitmap(videoFrame);
+                    const duration = Number(videoFrame.duration) / 1000; // microseconds to ms
+                    videoFrame.close();
+
+                    frames.push({
+                        bitmap,
+                        delay: Math.max(duration, 20) // Minimum 20ms delay
+                    });
+                }
+
+                decoder.close();
+
+                // Show first frame as preview
+                const firstBitmap = frames[0].bitmap;
+                const width = firstBitmap.width;
+                const height = firstBitmap.height;
+                img = { width, height, _gifDims: { width, height } };
+
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = width;
+                tempCanvas.height = height;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(firstBitmap, 0, 0);
+                render(tempCanvas);
+
+                // Store frames for re-processing on theme change
+                webpFrames = frames;
+
+                // Process frames
+                await processWebPFrames(frames);
+
+            } catch (e) {
+                console.error('WebP decode error:', e);
+                handleStaticImage(file);
+            }
+        }
+
         async function handleGif(file) {
             document.getElementById('output').classList.remove('hidden');
             document.getElementById('progressContainer').classList.remove('hidden');
             downloadBtn.disabled = true;
             downloadBtn.textContent = 'Processing...';
+            isAnimated = true;
             updateProgress(0, 'Parsing GIF...');
 
             const arrayBuffer = await file.arrayBuffer();
@@ -302,6 +528,70 @@
             previewImg.src = url;
         }
 
+        async function processWebPFrames(frames) {
+            const firstBitmap = frames[0].bitmap;
+            const size = Math.max(400, Math.min(firstBitmap.width, firstBitmap.height));
+            await processWebPFramesAsWebP(frames, size);
+        }
+
+        async function processWebPFramesAsWebP(frames, size) {
+            const frameCanvas = document.createElement('canvas');
+            frameCanvas.width = size;
+            frameCanvas.height = size;
+            const frameCtx = frameCanvas.getContext('2d', { willReadFrequently: true });
+
+            const sourceCanvas = document.createElement('canvas');
+            sourceCanvas.width = frames[0].bitmap.width;
+            sourceCanvas.height = frames[0].bitmap.height;
+            const sourceCtx = sourceCanvas.getContext('2d');
+
+            const webpFrames = [];
+
+            for (let i = 0; i < frames.length; i++) {
+                updateProgress((i / frames.length) * 80, `Processing frame ${i + 1}/${frames.length}`);
+
+                const frame = frames[i];
+
+                // Draw bitmap to source canvas
+                sourceCtx.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+                sourceCtx.drawImage(frame.bitmap, 0, 0);
+
+                // Render this frame with gold border
+                renderFrame(frameCtx, sourceCanvas, size);
+
+                // Get frame as WebP blob
+                const blob = await new Promise(resolve => frameCanvas.toBlob(resolve, 'image/webp', 0.9));
+                const buffer = await blob.arrayBuffer();
+
+                webpFrames.push({
+                    data: new Uint8Array(buffer),
+                    delay: frame.delay
+                });
+
+                await new Promise(r => setTimeout(r, 0));
+            }
+
+            updateProgress(80, 'Encoding animated WebP...');
+
+            // Create animated WebP by muxing frames
+            const blob = await createAnimatedWebP(webpFrames, size, size);
+
+            gifBlob = blob;
+            document.getElementById('progressContainer').classList.add('hidden');
+            downloadBtn.textContent = 'Download WebP';
+            downloadBtn.disabled = false;
+
+            // Show animated preview
+            const url = URL.createObjectURL(blob);
+            const previewImg = new Image();
+            previewImg.onload = () => {
+                canvas.width = previewImg.width;
+                canvas.height = previewImg.height;
+                ctx.drawImage(previewImg, 0, 0);
+            };
+            previewImg.src = url;
+        }
+
         function renderFrame(targetCtx, sourceCanvas, size) {
             const border = 8;
             const cx = size / 2;
@@ -359,6 +649,11 @@
                 document.getElementById('progressContainer').classList.remove('hidden');
                 downloadBtn.disabled = true;
                 await processGifFrames(gifFrames, dims);
+            } else if (webpFrames) {
+                // Re-process WebP with new theme
+                document.getElementById('progressContainer').classList.remove('hidden');
+                downloadBtn.disabled = true;
+                await processWebPFrames(webpFrames);
             } else if (img) {
                 render();
             }
@@ -417,9 +712,12 @@
 
         function download() {
             const a = document.createElement('a');
-            if (isGif && gifBlob) {
-                a.download = 'gold-profile.gif';
+            if (isAnimated && gifBlob) {
+                a.download = isWebP ? 'gold-profile.webp' : 'gold-profile.gif';
                 a.href = URL.createObjectURL(gifBlob);
+            } else if (isWebP) {
+                a.download = 'gold-profile.webp';
+                a.href = canvas.toDataURL('image/webp', 0.95);
             } else {
                 a.download = 'gold-profile.png';
                 a.href = canvas.toDataURL('image/png');
