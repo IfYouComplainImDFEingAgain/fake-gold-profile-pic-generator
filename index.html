@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gold Profile Picture Generator</title>
-    <style>
+        <style>
         * { box-sizing: border-box; }
         body {
             font-family: system-ui, sans-serif;
@@ -46,7 +46,17 @@
             cursor: pointer;
         }
         button:hover { transform: scale(1.02); }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
         .hidden { display: none; }
+        #output {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
         .toggle {
             display: flex;
             align-items: center;
@@ -72,6 +82,29 @@
         .example img {
             max-width: 150px;
         }
+        .progress-container {
+            width: 100%;
+            max-width: 300px;
+            margin: 10px 0;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #333;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #f4d03f, #c9a227);
+            width: 0%;
+            transition: width 0.1s;
+        }
+        .progress-text {
+            text-align: center;
+            margin-top: 5px;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -91,7 +124,13 @@
         <div class="preview">
             <canvas id="canvas"></canvas>
         </div>
-        <button onclick="download()">Download PNG</button>
+        <div id="progressContainer" class="progress-container hidden">
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill"></div>
+            </div>
+            <div id="progressText" class="progress-text"></div>
+        </div>
+        <button id="downloadBtn" onclick="download()">Download PNG</button>
     </div>
 
     <div class="examples">
@@ -109,31 +148,223 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        import { parseGIF, decompressFrames } from 'https://esm.sh/gifuct-js@2.1.2';
+        import { GIFEncoder, quantize, applyPalette } from 'https://cdn.skypack.dev/gifenc';
+
         let img = null;
+        let isGif = false;
+        let gifFrames = null;
+        let gifBlob = null;
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const downloadBtn = document.getElementById('downloadBtn');
 
-        document.getElementById('file').onchange = e => {
+        document.getElementById('file').onchange = async e => {
             const file = e.target.files[0];
             if (!file) return;
+
+            isGif = file.type === 'image/gif';
+            gifFrames = null;
+            gifBlob = null;
+
+            if (isGif) {
+                await handleGif(file);
+            } else {
+                handleStaticImage(file);
+            }
+        };
+
+        function handleStaticImage(file) {
             const reader = new FileReader();
             reader.onload = ev => {
                 img = new Image();
                 img.onload = () => {
                     document.getElementById('output').classList.remove('hidden');
+                    downloadBtn.textContent = 'Download PNG';
+                    downloadBtn.disabled = false;
                     render();
                 };
                 img.src = ev.target.result;
             };
             reader.readAsDataURL(file);
+        }
+
+        async function handleGif(file) {
+            document.getElementById('output').classList.remove('hidden');
+            document.getElementById('progressContainer').classList.remove('hidden');
+            downloadBtn.disabled = true;
+            downloadBtn.textContent = 'Processing...';
+            updateProgress(0, 'Parsing GIF...');
+
+            const arrayBuffer = await file.arrayBuffer();
+            const gif = parseGIF(arrayBuffer);
+            const frames = decompressFrames(gif, true);
+
+            gifFrames = frames;
+
+            // Show first frame as preview
+            const firstFrame = frames[0];
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = gif.lsd.width;
+            tempCanvas.height = gif.lsd.height;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            const imageData = tempCtx.createImageData(firstFrame.dims.width, firstFrame.dims.height);
+            imageData.data.set(firstFrame.patch);
+            tempCtx.putImageData(imageData, firstFrame.dims.left, firstFrame.dims.top);
+
+            img = { width: gif.lsd.width, height: gif.lsd.height, _gifDims: gif.lsd };
+            render(tempCanvas);
+
+            // Process all frames
+            await processGifFrames(frames, gif.lsd);
+        }
+
+        async function processGifFrames(frames, dims) {
+            const size = Math.max(400, Math.min(dims.width, dims.height));
+            const use2025Theme = document.getElementById('theme2025').checked;
+
+            const gif = GIFEncoder();
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = dims.width;
+            tempCanvas.height = dims.height;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            const frameCanvas = document.createElement('canvas');
+            frameCanvas.width = size;
+            frameCanvas.height = size;
+            const frameCtx = frameCanvas.getContext('2d', { willReadFrequently: true });
+
+            // Create cumulative canvas for GIF frame compositing
+            const cumulativeCanvas = document.createElement('canvas');
+            cumulativeCanvas.width = dims.width;
+            cumulativeCanvas.height = dims.height;
+            const cumulativeCtx = cumulativeCanvas.getContext('2d');
+
+            for (let i = 0; i < frames.length; i++) {
+                updateProgress((i / frames.length) * 100, `Processing frame ${i + 1}/${frames.length}`);
+
+                const frame = frames[i];
+
+                // Handle disposal method from previous frame
+                if (i > 0) {
+                    const prevFrame = frames[i - 1];
+                    if (prevFrame.disposalType === 2) {
+                        cumulativeCtx.clearRect(prevFrame.dims.left, prevFrame.dims.top, prevFrame.dims.width, prevFrame.dims.height);
+                    } else if (prevFrame.disposalType === 3) {
+                        cumulativeCtx.clearRect(prevFrame.dims.left, prevFrame.dims.top, prevFrame.dims.width, prevFrame.dims.height);
+                    }
+                }
+
+                // Draw current frame patch onto cumulative canvas
+                const imageData = new ImageData(new Uint8ClampedArray(frame.patch), frame.dims.width, frame.dims.height);
+                tempCtx.clearRect(0, 0, dims.width, dims.height);
+                tempCtx.putImageData(imageData, 0, 0);
+                cumulativeCtx.drawImage(tempCanvas, frame.dims.left, frame.dims.top);
+
+                // Render this frame with gold border
+                renderFrame(frameCtx, cumulativeCanvas, size);
+
+                // Get frame data and quantize
+                const frameData = frameCtx.getImageData(0, 0, size, size).data;
+                const palette = quantize(frameData, 256);
+                const index = applyPalette(frameData, palette);
+
+                gif.writeFrame(index, size, size, {
+                    palette,
+                    delay: frame.delay || 100,
+                    transparent: use2025Theme ? false : true,
+                    transparentIndex: use2025Theme ? 0 : 0
+                });
+
+                // Let UI update
+                await new Promise(r => setTimeout(r, 0));
+            }
+
+            gif.finish();
+
+            const blob = new Blob([gif.bytes()], { type: 'image/gif' });
+            gifBlob = blob;
+            document.getElementById('progressContainer').classList.add('hidden');
+            downloadBtn.textContent = 'Download GIF';
+            downloadBtn.disabled = false;
+
+            // Show animated preview
+            const url = URL.createObjectURL(blob);
+            const previewImg = new Image();
+            previewImg.onload = () => {
+                canvas.width = previewImg.width;
+                canvas.height = previewImg.height;
+                ctx.drawImage(previewImg, 0, 0);
+            };
+            previewImg.src = url;
+        }
+
+        function renderFrame(targetCtx, sourceCanvas, size) {
+            const border = 8;
+            const cx = size / 2;
+            const cy = size / 2;
+            const outerR = size / 2;
+            const innerR = outerR - border;
+
+            targetCtx.clearRect(0, 0, size, size);
+
+            if (document.getElementById('theme2025').checked) {
+                targetCtx.fillStyle = '#42464d';
+                targetCtx.fillRect(0, 0, size, size);
+            }
+
+            // Draw gold gradient ring
+            const diag = size * 0.7071;
+            const grad = targetCtx.createLinearGradient(
+                cx - diag, cy - diag,
+                cx + diag, cy + diag
+            );
+            grad.addColorStop(0, 'hsl(49, 99%, 61%)');
+            grad.addColorStop(0.2, 'hsl(40, 98%, 59%)');
+            grad.addColorStop(0.5, 'hsl(41, 60%, 39%)');
+            grad.addColorStop(0.8, 'hsl(42, 49%, 36%)');
+            grad.addColorStop(1, 'hsl(49, 99%, 61%)');
+
+            targetCtx.beginPath();
+            targetCtx.arc(cx, cy, outerR, 0, Math.PI * 2);
+            targetCtx.fillStyle = grad;
+            targetCtx.fill();
+
+            // Clip and draw image
+            targetCtx.save();
+            targetCtx.beginPath();
+            targetCtx.arc(cx, cy, innerR, 0, Math.PI * 2);
+            targetCtx.clip();
+
+            const scale = Math.max((innerR * 2) / sourceCanvas.width, (innerR * 2) / sourceCanvas.height);
+            const w = sourceCanvas.width * scale;
+            const h = sourceCanvas.height * scale;
+            targetCtx.drawImage(sourceCanvas, cx - w/2, cy - h/2, w, h);
+
+            targetCtx.restore();
+        }
+
+        function updateProgress(percent, text) {
+            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressText').textContent = text;
+        }
+
+        document.getElementById('theme2025').onchange = async () => {
+            if (gifFrames) {
+                // Re-process GIF with new theme
+                const dims = img._gifDims;
+                document.getElementById('progressContainer').classList.remove('hidden');
+                downloadBtn.disabled = true;
+                await processGifFrames(gifFrames, dims);
+            } else if (img) {
+                render();
+            }
         };
 
-        document.getElementById('theme2025').onchange = () => {
-            if (img) render();
-        };
-
-        function render() {
+        function render(sourceCanvas = null) {
             const size = Math.max(400, Math.min(img.width, img.height));
             const border = 8;
 
@@ -145,17 +376,14 @@
             const outerR = size / 2;
             const innerR = outerR - border;
 
-            // Clear canvas
             ctx.clearRect(0, 0, size, size);
 
-            // Fill background if 2025 theme is enabled
             if (document.getElementById('theme2025').checked) {
                 ctx.fillStyle = '#42464d';
                 ctx.fillRect(0, 0, size, size);
             }
 
             // Draw gold gradient ring
-            // 135deg gradient
             const diag = size * 0.7071;
             const grad = ctx.createLinearGradient(
                 cx - diag, cy - diag,
@@ -172,27 +400,35 @@
             ctx.fillStyle = grad;
             ctx.fill();
 
-            // Clip to inner circle and draw image
+            // Clip and draw image
             ctx.save();
             ctx.beginPath();
             ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
             ctx.clip();
 
-            // Draw image covering the inner circle
-            const scale = Math.max((innerR * 2) / img.width, (innerR * 2) / img.height);
-            const w = img.width * scale;
-            const h = img.height * scale;
-            ctx.drawImage(img, cx - w/2, cy - h/2, w, h);
+            const source = sourceCanvas || img;
+            const scale = Math.max((innerR * 2) / source.width, (innerR * 2) / source.height);
+            const w = source.width * scale;
+            const h = source.height * scale;
+            ctx.drawImage(source, cx - w/2, cy - h/2, w, h);
 
             ctx.restore();
         }
 
         function download() {
             const a = document.createElement('a');
-            a.download = 'gold-profile.png';
-            a.href = canvas.toDataURL('image/png');
+            if (isGif && gifBlob) {
+                a.download = 'gold-profile.gif';
+                a.href = URL.createObjectURL(gifBlob);
+            } else {
+                a.download = 'gold-profile.png';
+                a.href = canvas.toDataURL('image/png');
+            }
             a.click();
         }
+
+        // Expose to global scope for onclick handler
+        window.download = download;
     </script>
 </body>
 </html>
