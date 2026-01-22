@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gold Profile Picture Generator</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 { color: #d4af37; }
+        .upload-area {
+            border: 2px dashed #d4af37;
+            border-radius: 12px;
+            padding: 40px;
+            margin: 20px 0;
+            cursor: pointer;
+            max-width: 400px;
+            text-align: center;
+        }
+        .upload-area:hover { background: rgba(212,175,55,0.1); }
+        .preview {
+            background: repeating-conic-gradient(#666 0% 25%, #444 0% 50%) 50% / 16px 16px;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        canvas { display: block; }
+        button {
+            background: linear-gradient(135deg, #f4d03f, #c9a227, #8b7355, #c9a227, #f4d03f);
+            color: #000;
+            border: none;
+            padding: 12px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        button:hover { transform: scale(1.02); }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <h1>Gold Profile Picture Generator</h1>
+
+    <div class="upload-area" onclick="document.getElementById('file').click()">
+        <input type="file" id="file" accept="image/*" style="display:none">
+        <p>Click to upload image</p>
+    </div>
+
+
+    <div id="output" class="hidden">
+        <div class="preview">
+            <canvas id="canvas"></canvas>
+        </div>
+        <button onclick="download()">Download PNG</button>
+    </div>
+
+    <script>
+        let img = null;
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        document.getElementById('file').onchange = e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = ev => {
+                img = new Image();
+                img.onload = () => {
+                    document.getElementById('output').classList.remove('hidden');
+                    render();
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        };
+
+        function render() {
+            const size = 400;
+            const border = 6;
+
+            canvas.width = size;
+            canvas.height = size;
+
+            const cx = size / 2;
+            const cy = size / 2;
+            const outerR = size / 2;
+            const innerR = outerR - border;
+
+            // Clear canvas
+            ctx.clearRect(0, 0, size, size);
+
+            // Draw gold gradient ring
+            // 135deg gradient
+            const diag = size * 0.7071;
+            const grad = ctx.createLinearGradient(
+                cx - diag, cy - diag,
+                cx + diag, cy + diag
+            );
+            grad.addColorStop(0, 'hsl(49, 99%, 61%)');
+            grad.addColorStop(0.2, 'hsl(40, 98%, 59%)');
+            grad.addColorStop(0.5, 'hsl(41, 60%, 39%)');
+            grad.addColorStop(0.8, 'hsl(42, 49%, 36%)');
+            grad.addColorStop(1, 'hsl(49, 99%, 61%)');
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
+            ctx.fillStyle = grad;
+            ctx.fill();
+
+            // Clip to inner circle and draw image
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
+            ctx.clip();
+
+            // Draw image covering the inner circle
+            const scale = Math.max((innerR * 2) / img.width, (innerR * 2) / img.height);
+            const w = img.width * scale;
+            const h = img.height * scale;
+            ctx.drawImage(img, cx - w/2, cy - h/2, w, h);
+
+            ctx.restore();
+        }
+
+        function download() {
+            const a = document.createElement('a');
+            a.download = 'gold-profile.png';
+            a.href = canvas.toDataURL('image/png');
+            a.click();
+        }
+    </script>
+</body>
+</html>
