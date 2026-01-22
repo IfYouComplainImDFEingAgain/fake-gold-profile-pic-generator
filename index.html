@@ -47,6 +47,17 @@
         }
         button:hover { transform: scale(1.02); }
         .hidden { display: none; }
+        .examples {
+            display: flex;
+            gap: 40px;
+            margin-top: 40px;
+        }
+        .example {
+            text-align: center;
+        }
+        .example img {
+            max-width: 150px;
+        }
     </style>
 </head>
 <body>
@@ -63,6 +74,17 @@
             <canvas id="canvas"></canvas>
         </div>
         <button onclick="download()">Download PNG</button>
+    </div>
+
+    <div class="examples">
+        <div class="example">
+            <img src="img/before.png" alt="Before">
+            <p>Go from this</p>
+        </div>
+        <div class="example">
+            <img src="img/after.png" alt="After">
+            <p>to this.</p>
+        </div>
     </div>
 
     <script>
