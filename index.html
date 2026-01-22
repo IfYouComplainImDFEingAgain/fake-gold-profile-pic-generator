@@ -134,8 +134,8 @@
         };
 
         function render() {
-            const size = 400;
-            const border = 6;
+            const size = Math.max(400, Math.min(img.width, img.height));
+            const border = 8;
 
             canvas.width = size;
             canvas.height = size;
