@@ -118,7 +118,7 @@
             object-fit: cover;
         }
         /* Easter Eggs */
-        #smugJug, #nazrinDance, #bossCrab, #gigachad, #shoovy { cursor: pointer; }
+        #smugJug, #nazrinDance, #bossCrab, #gigachad, #shoovy, #fish { cursor: pointer; }
         #bgImage {
             position: fixed;
             top: 0;
@@ -350,7 +350,7 @@
         <h2>Gallery</h2>
         <div class="gallery-grid">
             <img src="img/gallery/boss-crab.gif" alt="Boss Crab" id="bossCrab">
-            <img src="img/gallery/fish.gif" alt="Fish">
+            <img src="img/gallery/fish.gif" alt="Fish" id="fish">
             <img src="img/gallery/gigachad.png" alt="Gigachad" id="gigachad">
             <img src="img/gallery/nazrin-dance.gif" alt="Nazrin Dance" id="nazrinDance">
             <img src="img/gallery/shoovy.webp" alt="Shoovy" id="shoovy">
@@ -1005,19 +1005,29 @@
             e.target.src = images[Math.floor(Math.random() * images.length)];
         });
 
-        // Shoovy Easter Egg
+        // Background Image Easter Eggs
         let bgImage = null;
-        document.getElementById('shoovy').addEventListener('click', () => {
-            if (bgImage) {
+        let currentImageTrigger = null;
+        function toggleBgImage(triggerId, folder, count) {
+            if (bgImage && currentImageTrigger === triggerId) {
                 bgImage.remove();
                 bgImage = null;
+                currentImageTrigger = null;
             } else {
-                const num = Math.floor(Math.random() * 5) + 1;
+                if (bgImage) bgImage.remove();
+                const num = Math.floor(Math.random() * count) + 1;
                 bgImage = document.createElement('img');
                 bgImage.id = 'bgImage';
-                bgImage.src = `assets/shoovy/${num}.webp`;
+                bgImage.src = `${folder}/${num}.webp`;
                 document.body.prepend(bgImage);
+                currentImageTrigger = triggerId;
             }
+        }
+        document.getElementById('shoovy').addEventListener('click', () => {
+            toggleBgImage('shoovy', 'assets/shoovy', 5);
+        });
+        document.getElementById('fish').addEventListener('click', () => {
+            toggleBgImage('fish', 'assets/fish', 3);
         });
 
         // Nazrin Dance Easter Egg
