@@ -117,6 +117,64 @@
             border-radius: 50%;
             object-fit: cover;
         }
+        /* Smug Jug Easter Egg */
+        #smugJug { cursor: pointer; }
+        .wacky-mode {
+            font-family: "Comic Sans MS", "Comic Sans", cursive !important;
+            background: linear-gradient(45deg, #ff00ff, #00ffff, #ffff00, #ff00ff) !important;
+            background-size: 400% 400% !important;
+            animation: rainbow 3s ease infinite !important;
+        }
+        .wacky-mode * {
+            font-family: inherit !important;
+        }
+        .wacky-mode h1, .wacky-mode .subtitle {
+            animation: shake 0.5s ease infinite, rainbow-text 2s ease infinite !important;
+            display: inline-block;
+        }
+        .wacky-mode .gallery-grid img {
+            animation: spin 2s linear infinite !important;
+        }
+        .wacky-mode .gallery-grid img:nth-child(even) {
+            animation-direction: reverse !important;
+        }
+        @keyframes rainbow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        @keyframes rainbow-text {
+            0% { color: #ff0000; }
+            16% { color: #ff8800; }
+            33% { color: #ffff00; }
+            50% { color: #00ff00; }
+            66% { color: #0088ff; }
+            83% { color: #ff00ff; }
+            100% { color: #ff0000; }
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0) rotate(0deg); }
+            25% { transform: translateX(-5px) rotate(-5deg); }
+            75% { transform: translateX(5px) rotate(5deg); }
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            25% { transform: translate(100px, -50px) rotate(90deg); }
+            50% { transform: translate(50px, 100px) rotate(180deg); }
+            75% { transform: translate(-50px, 50px) rotate(270deg); }
+        }
+        .floating-jug {
+            position: fixed;
+            width: 80px;
+            height: 80px;
+            pointer-events: none;
+            z-index: 9999;
+            animation: float 4s ease-in-out infinite;
+        }
         /* Mock profile styles - Kiwi Farms theme (exact values) */
         .mock-profile {
             margin-top: 30px;
@@ -276,7 +334,7 @@
             <img src="img/gallery/gigachad.png" alt="Gigachad">
             <img src="img/gallery/nazrin-dance.gif" alt="Nazrin Dance">
             <img src="img/gallery/shoovy.webp" alt="Shoovy">
-            <img src="img/gallery/smug-jug.gif" alt="Smug Jug">
+            <img src="img/gallery/smug-jug.gif" alt="Smug Jug" id="smugJug">
         </div>
     </div>
 
@@ -897,6 +955,33 @@
 
         // Expose to global scope for onclick handler
         window.download = download;
+
+        // Smug Jug Easter Egg
+        let wackyMode = false;
+        const floatingJugs = [];
+        document.getElementById('smugJug').addEventListener('click', () => {
+            wackyMode = !wackyMode;
+            document.body.classList.toggle('wacky-mode', wackyMode);
+
+            if (wackyMode) {
+                // Spawn floating smug jugs
+                for (let i = 0; i < 8; i++) {
+                    const jug = document.createElement('img');
+                    jug.src = 'img/gallery/smug-jug.gif';
+                    jug.className = 'floating-jug';
+                    jug.style.left = Math.random() * window.innerWidth + 'px';
+                    jug.style.top = Math.random() * window.innerHeight + 'px';
+                    jug.style.animationDelay = (Math.random() * 4) + 's';
+                    jug.style.animationDuration = (3 + Math.random() * 3) + 's';
+                    document.body.appendChild(jug);
+                    floatingJugs.push(jug);
+                }
+            } else {
+                // Remove floating jugs
+                floatingJugs.forEach(jug => jug.remove());
+                floatingJugs.length = 0;
+            }
+        });
     </script>
 </body>
 </html>
