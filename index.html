@@ -34,6 +34,10 @@
             border-radius: 8px;
             margin: 20px 0;
         }
+        .preview img {
+            display: block;
+            max-width: 100%;
+        }
         canvas { display: block; }
         button {
             background: linear-gradient(135deg, #f4d03f, #c9a227, #8b7355, #c9a227, #f4d03f);
@@ -210,6 +214,7 @@
     <div id="output" class="hidden">
         <div class="preview">
             <canvas id="canvas"></canvas>
+            <img id="previewImg" class="hidden" alt="Preview">
         </div>
         <div id="progressContainer" class="progress-container hidden">
             <div class="progress-bar">
@@ -414,9 +419,21 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const downloadBtn = document.getElementById('downloadBtn');
+        const previewImg = document.getElementById('previewImg');
         const mockCanvas = document.getElementById('mockCanvas');
         const mockCtx = mockCanvas.getContext('2d');
         const mockImg = document.getElementById('mockImg');
+
+        function updateMainPreview(animatedBlobUrl = null) {
+            if (animatedBlobUrl) {
+                canvas.classList.add('hidden');
+                previewImg.classList.remove('hidden');
+                previewImg.src = animatedBlobUrl;
+            } else {
+                previewImg.classList.add('hidden');
+                canvas.classList.remove('hidden');
+            }
+        }
 
         function updateMockProfile(animatedBlobUrl = null) {
             if (animatedBlobUrl) {
@@ -654,14 +671,15 @@
 
             // Show animated preview
             const url = URL.createObjectURL(blob);
-            const previewImg = new Image();
-            previewImg.onload = () => {
-                canvas.width = previewImg.width;
-                canvas.height = previewImg.height;
-                ctx.drawImage(previewImg, 0, 0);
+            const tempImg = new Image();
+            tempImg.onload = () => {
+                canvas.width = tempImg.width;
+                canvas.height = tempImg.height;
+                ctx.drawImage(tempImg, 0, 0);
+                updateMainPreview(url);
                 updateMockProfile(url);
             };
-            previewImg.src = url;
+            tempImg.src = url;
         }
 
         async function processWebPFrames(frames) {
@@ -719,14 +737,15 @@
 
             // Show animated preview
             const url = URL.createObjectURL(blob);
-            const previewImg = new Image();
-            previewImg.onload = () => {
-                canvas.width = previewImg.width;
-                canvas.height = previewImg.height;
-                ctx.drawImage(previewImg, 0, 0);
+            const tempImg = new Image();
+            tempImg.onload = () => {
+                canvas.width = tempImg.width;
+                canvas.height = tempImg.height;
+                ctx.drawImage(tempImg, 0, 0);
+                updateMainPreview(url);
                 updateMockProfile(url);
             };
-            previewImg.src = url;
+            tempImg.src = url;
         }
 
         function renderFrame(targetCtx, sourceCanvas, size) {
@@ -846,6 +865,7 @@
             ctx.fillStyle = grad;
             ctx.fill();
 
+            updateMainPreview();
             updateMockProfile();
         }
 
