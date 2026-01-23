@@ -79,12 +79,21 @@
             display: flex;
             gap: 40px;
             margin-top: 40px;
+            align-items: flex-end;
         }
         .example {
             text-align: center;
+            display: flex;
+            flex-direction: column;
         }
         .example img {
             max-width: 150px;
+            flex: 1;
+            object-fit: contain;
+            object-position: bottom;
+        }
+        .example p {
+            margin: 10px 0 0 0;
         }
         .gallery {
             margin-top: 40px;
