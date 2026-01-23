@@ -51,7 +51,7 @@
             cursor: not-allowed;
             transform: none;
         }
-        .hidden { display: none; }
+        .hidden { display: none !important; }
         #output {
             display: flex;
             flex-direction: column;
@@ -223,7 +223,8 @@
             <div class="mock-profile-inner">
                 <div class="mock-avatar-wrapper">
                     <div class="mock-avatar">
-                        <canvas id="mockCanvas"></canvas>
+                        <canvas id="mockCanvas" class="hidden"></canvas>
+                        <img id="mockImg" class="hidden" alt="Preview">
                     </div>
                 </div>
                 <span class="mock-username">BossmanJack</span>
@@ -415,11 +416,22 @@
         const downloadBtn = document.getElementById('downloadBtn');
         const mockCanvas = document.getElementById('mockCanvas');
         const mockCtx = mockCanvas.getContext('2d');
+        const mockImg = document.getElementById('mockImg');
 
-        function updateMockProfile() {
-            mockCanvas.width = 144;
-            mockCanvas.height = 144;
-            mockCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, 144, 144);
+        function updateMockProfile(animatedBlobUrl = null) {
+            if (animatedBlobUrl) {
+                // Show animated image
+                mockCanvas.classList.add('hidden');
+                mockImg.classList.remove('hidden');
+                mockImg.src = animatedBlobUrl;
+            } else {
+                // Show static canvas
+                mockImg.classList.add('hidden');
+                mockCanvas.classList.remove('hidden');
+                mockCanvas.width = 144;
+                mockCanvas.height = 144;
+                mockCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, 144, 144);
+            }
         }
 
         document.getElementById('file').onchange = async e => {
@@ -647,7 +659,7 @@
                 canvas.width = previewImg.width;
                 canvas.height = previewImg.height;
                 ctx.drawImage(previewImg, 0, 0);
-                updateMockProfile();
+                updateMockProfile(url);
             };
             previewImg.src = url;
         }
@@ -712,7 +724,7 @@
                 canvas.width = previewImg.width;
                 canvas.height = previewImg.height;
                 ctx.drawImage(previewImg, 0, 0);
-                updateMockProfile();
+                updateMockProfile(url);
             };
             previewImg.src = url;
         }
