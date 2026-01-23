@@ -117,8 +117,28 @@
             border-radius: 50%;
             object-fit: cover;
         }
-        /* Smug Jug Easter Egg */
-        #smugJug { cursor: pointer; }
+        /* Easter Eggs */
+        #smugJug, #nazrinDance, #bossCrab, #gigachad, #shoovy { cursor: pointer; }
+        #bgImage {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: contain;
+            background: #000;
+            z-index: -1;
+        }
+        #bgVideo {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: contain;
+            background: #000;
+            z-index: -1;
+        }
         .wacky-mode {
             font-family: "Comic Sans MS", "Comic Sans", cursive !important;
             background: linear-gradient(45deg, #ff00ff, #00ffff, #ffff00, #ff00ff) !important;
@@ -329,11 +349,11 @@
     <div class="gallery">
         <h2>Gallery</h2>
         <div class="gallery-grid">
-            <img src="img/gallery/boss-crab.gif" alt="Boss Crab">
+            <img src="img/gallery/boss-crab.gif" alt="Boss Crab" id="bossCrab">
             <img src="img/gallery/fish.gif" alt="Fish">
-            <img src="img/gallery/gigachad.png" alt="Gigachad">
-            <img src="img/gallery/nazrin-dance.gif" alt="Nazrin Dance">
-            <img src="img/gallery/shoovy.webp" alt="Shoovy">
+            <img src="img/gallery/gigachad.png" alt="Gigachad" id="gigachad">
+            <img src="img/gallery/nazrin-dance.gif" alt="Nazrin Dance" id="nazrinDance">
+            <img src="img/gallery/shoovy.webp" alt="Shoovy" id="shoovy">
             <img src="img/gallery/smug-jug.gif" alt="Smug Jug" id="smugJug">
         </div>
     </div>
@@ -955,6 +975,63 @@
 
         // Expose to global scope for onclick handler
         window.download = download;
+
+        // Video Background Easter Eggs
+        let bgVideo = null;
+        let currentVideoTrigger = null;
+        function toggleBgVideo(triggerId, videos) {
+            if (bgVideo && currentVideoTrigger === triggerId) {
+                bgVideo.remove();
+                bgVideo = null;
+                currentVideoTrigger = null;
+            } else {
+                if (bgVideo) bgVideo.remove();
+                bgVideo = document.createElement('video');
+                bgVideo.id = 'bgVideo';
+                bgVideo.src = videos[Math.floor(Math.random() * videos.length)];
+                bgVideo.loop = true;
+                bgVideo.muted = false;
+                bgVideo.play();
+                document.body.prepend(bgVideo);
+                currentVideoTrigger = triggerId;
+            }
+        }
+        document.getElementById('bossCrab').addEventListener('click', () => {
+            toggleBgVideo('bossCrab', ['assets/sweet-honey-480.mp4', 'assets/viva-la-vida.mp4']);
+        });
+        document.getElementById('gigachad').addEventListener('click', (e) => {
+            toggleBgVideo('gigachad', ['assets/the-fire-rises.mp4', 'assets/jojo.mp4']);
+            const images = ['img/gallery/gigachad.png', 'assets/pit-viper.jpg'];
+            e.target.src = images[Math.floor(Math.random() * images.length)];
+        });
+
+        // Shoovy Easter Egg
+        let bgImage = null;
+        document.getElementById('shoovy').addEventListener('click', () => {
+            if (bgImage) {
+                bgImage.remove();
+                bgImage = null;
+            } else {
+                const num = Math.floor(Math.random() * 5) + 1;
+                bgImage = document.createElement('img');
+                bgImage.id = 'bgImage';
+                bgImage.src = `assets/shoovy/${num}.webp`;
+                document.body.prepend(bgImage);
+            }
+        });
+
+        // Nazrin Dance Easter Egg
+        const nazrinSounds = [
+            'assets/nazrin-1.mp3',
+            'assets/nazrin-2.mp3',
+            'assets/nazrin-3.mp3',
+            'assets/nazrin-4.mp3',
+            'assets/nazrin-5.mp3'
+        ];
+        document.getElementById('nazrinDance').addEventListener('click', () => {
+            const sound = nazrinSounds[Math.floor(Math.random() * nazrinSounds.length)];
+            new Audio(sound).play();
+        });
 
         // Smug Jug Easter Egg
         let wackyMode = false;
